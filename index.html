@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Google Timeline Dashboard</title>
+<link rel="stylesheet" href="__LEAFLET_CSS__">
+<link rel="stylesheet" href="__MAPLIBRE_CSS__">
+<style>
+  :root{
+    --bg:#0b0f17; --panel:#131a26; --panel2:#0f1520; --border:#1f2a3d;
+    --text:#e6ebf2; --muted:#8b97a9; --accent:#4da6ff; --accent2:#ff7a59;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  header{padding:18px 22px 6px}
+  h1{margin:0 0 2px; font-size:20px; font-weight:650; letter-spacing:.2px}
+  h1 small{color:var(--muted); font-weight:400; font-size:13px}
+  header p.sub{margin:0 0 12px; color:var(--muted); font-size:12.5px}
+  .stats{display:flex; flex-wrap:wrap; gap:10px; align-items:stretch}
+  .chip{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:8px 14px; min-width:96px}
+  .chip b{display:block; font-size:19px; font-weight:650}
+  .chip span{color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px}
+  select.yearsel{
+    background:var(--panel); color:var(--text); border:1px solid var(--border);
+    border-radius:10px; padding:8px 12px; font-size:13.5px; cursor:pointer;
+  }
+  main{display:grid; grid-template-columns:minmax(0,1fr); gap:16px; padding:16px 22px 24px; align-items:start}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px 16px; overflow:hidden}
+  .card h2{margin:0 0 10px; font-size:13.5px; font-weight:600; color:var(--muted); letter-spacing:.4px; text-transform:uppercase}
+  #mapcard{padding:0; display:flex; flex-direction:column; height:min(calc(100vh - 190px), 92vh); min-height:560px}
+  #mapWrap{position:relative; flex:1; min-height:0}
+  #map{position:absolute; inset:0; z-index:1}
+  /* keyless dark basemap: OSM standard tiles, inverted in CSS (verified headless) */
+  #map .leaflet-tile{filter:invert(0.92) hue-rotate(180deg) brightness(0.85) contrast(1.02) saturate(0.7)}
+  .maptools{position:absolute; top:10px; right:10px; z-index:1000; display:flex; flex-direction:column; gap:6px}
+  .maptools button,.maptools label.btn{
+    background:var(--panel); color:var(--text); border:1px solid var(--border);
+    border-radius:8px; padding:7px 11px; font-size:12.5px; cursor:pointer;
+    box-shadow:0 2px 8px rgba(0,0,0,.35); user-select:none;
+  }
+  .maptools label.btn{display:flex; align-items:center; gap:7px}
+  .maptools label.btn input{margin:0; accent-color:var(--accent)}
+  .maptools button:hover{border-color:var(--accent)}
+  .heatctl{background:var(--panel); border:1px solid var(--border); border-radius:8px;
+    padding:8px 10px; box-shadow:0 2px 8px rgba(0,0,0,.35); font-size:11.5px; min-width:200px}
+  .heatctl-title{font-size:10.5px; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); margin-bottom:6px}
+  .heatctl label{display:flex; align-items:center; gap:8px; margin:4px 0; color:var(--text)}
+  .heatctl label span{color:var(--muted); font-variant-numeric:tabular-nums; min-width:34px; text-align:right}
+  .heatctl input[type=range]{flex:1; accent-color:var(--accent)}
+  .heatctl-hint{color:var(--muted); font-size:10px; margin-top:4px}
+  .leaflet-container{background:#0d1320; font:inherit}
+  .leaflet-control-attribution{background:rgba(11,15,23,.7)!important; color:#667!important; font-size:10px}
+  .leaflet-control-attribution a{color:#7bc}
+  .legend{position:absolute; bottom:14px; left:10px; z-index:1000; background:rgba(11,15,23,.82);
+    border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:11px; color:var(--muted)}
+  .legend .grad{height:8px; width:110px; border-radius:4px; margin:4px 0 2px;
+    background:linear-gradient(90deg,#1e3a8a,#22a7e3,#42d392,#fde047,#fb923c,#ef4444)}
+  .legend .cap{display:flex; justify-content:space-between; color:var(--muted)}
+  .cols{display:grid; grid-template-columns:minmax(0,1fr); grid-auto-rows:max-content; gap:16px}
+  .chartbox{position:relative; height:240px}
+  .chartbox.short{height:190px}
+  table.places{width:100%; border-collapse:collapse; font-size:12.5px}
+  table.places th{text-align:left; color:var(--muted); font-weight:600; font-size:11px;
+    text-transform:uppercase; letter-spacing:.5px; padding:5px 8px; border-bottom:1px solid var(--border)}
+  table.places td{padding:7px 8px; border-bottom:1px solid var(--border)}
+  table.places tr{cursor:pointer}
+  table.places tr:hover{background:var(--panel2)}
+  table.places td.num{text-align:right; white-space:nowrap; color:var(--muted)}
+  td.name{max-width:240px}
+  td.name b{display:block}
+  td.name span{color:var(--muted); display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px}
+  .tag{display:inline-block; font-size:10px; font-weight:700; letter-spacing:.4px; border-radius:5px;
+    padding:2px 6px; margin-right:4px; vertical-align:middle}
+  .t-HOME{background:#14532d; color:#86efac}
+  .t-WORK{background:#7c2d12; color:#fdba74}
+  .t-UNKNOWN{background:#1f2937; color:#9ca3af}
+  .t-INFERRED{background:#164e63; color:#67e8f9}
+  .t-SEARCHED_ADDRESS{background:#581c87; color:#d8b4fe}
+  .t-ALIASED_LOCATION{background:#365314; color:#bef264}
+  .t-OTHER{background:#3f3f46; color:#d4d4d8}
+  #rhythmWrap{overflow-x:auto}
+  .grid{display:grid; grid-template-columns:44px repeat(24,22px); gap:2px; width:max-content}
+  .rowlabel{display:flex; align-items:center; justify-content:space-between; padding-right:6px;
+    color:var(--muted); font-size:11px}
+  .rowlabel span{color:#5b6b80}
+  .cel{height:20px; border-radius:3px; cursor:pointer}
+  .hourlabels{display:grid; grid-template-columns:repeat(24,22px); gap:2px; margin-left:46px;
+    margin-bottom:2px; color:var(--muted); font-size:9.5px}
+  .hourlabels div{text-align:center}
+  #gloss{margin:8px 0 2px; font-size:11px}
+  .legend-row{display:flex; gap:14px; align-items:center; font-size:11px}
+  .sw{width:14px;height:14px;border-radius:3px;display:inline-block}
+  .geocode{display:flex; align-items:center; gap:10px; margin:-4px 0 8px; font-size:12px}
+  .geocode .bar{flex:1; height:8px; background:var(--panel2); border-radius:5px; overflow:hidden}
+  .geocode .bar > div{height:100%; width:0%; background:linear-gradient(90deg,#4da6ff,#42d392); transition:width .4s}
+  .geocode button{background:var(--panel); color:var(--text); border:1px solid var(--border);
+    border-radius:7px; padding:3px 10px; font-size:11.5px; cursor:pointer}
+  .geocode button:hover{border-color:var(--accent)}
+  .fc-controls{display:flex; gap:10px; flex-wrap:wrap; margin:0 0 10px}
+  .fc-controls label{display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.4px}
+  .fc-controls select{background:var(--panel2); color:var(--text); border:1px solid var(--border);
+    border-radius:8px; padding:6px 10px; font-size:12.5px; min-width:190px}
+  #fcSummary{display:flex; flex-wrap:wrap; gap:8px; font-size:12px; margin-bottom:10px}
+  #fcSummary .fchip{background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:5px 9px}
+  #fcNarrative{border-left:3px solid var(--accent); padding-left:10px; margin:2px 0 12px}
+  #fcNarrative div{font-size:12.5px; line-height:1.6; color:var(--text)}
+  #fcNarrative .fctime{color:var(--muted); font-variant-numeric:tabular-nums}
+  #fcPlaces{font-size:12px}
+  #fcPlaces .fp{display:flex; justify-content:space-between; gap:8px; padding:4px 0; border-bottom:1px dashed var(--border)}
+  #fcPlaces .fp span:last-child{color:var(--muted); white-space:nowrap}
+  #fcLoad{color:var(--muted); font-size:12px}
+  footer{padding:0 22px 22px; color:var(--muted); font-size:11.5px}
+  footer a{color:var(--accent)}
+  #loading{position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    background:var(--bg); z-index:9999; font-size:15px; color:var(--muted)}
+  @media(max-width:1100px){ main{grid-template-columns:1fr} .cols{grid-template-columns:1fr 1fr} }
+  @media(max-width:760px){ .cols{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div id="loading">Loading timeline data&hellip;</div>
+<header>
+  <h1>Google Timeline Dashboard <small id="gen"></small></h1>
+  <p class="sub">Location history from <b id="rng"></b> &middot; <b id="ptcnt"></b> GPS points &middot; keyless dark basemap (OSM tiles, darkened in CSS) &middot; addresses via Nominatim</p>
+  <div class="stats">
+    <div id="chips" style="display:contents"></div>
+    <select class="yearsel" id="yearSel" title="Filter heatmap, charts and top places by year">
+      <option value="all">All years</option>
+    </select>
+  </div>
+</header>
+<main>
+  <div class="card" id="mapcard">
+    <div id="mapWrap">
+      <div id="map"></div>
+      <div class="maptools">
+        <button onclick="fitAll()" title="Zoom out to all recorded locations">Fit all data</button>
+        <button onclick="goHome()" title="Zoom to home">Go home</button>
+        <label class="btn"><input type="checkbox" id="heatOn" checked onchange="applyToggles()"> Heatmap</label>
+        <label class="btn"><input type="checkbox" id="placesOn" checked onchange="updateMarkers()"> Top places</label>
+        <label class="btn"><input type="checkbox" id="freqOn" checked onchange="applyToggles()"> Frequent</label>
+        <div class="heatctl">
+          <div class="heatctl-title">Heat sigmoid</div>
+          <label>Threshold <span id="thrVal"></span>
+            <input type="range" id="thr" min="0" max="1" step="0.01" value="0.5" oninput="onSigmoid()"></label>
+          <label>Sharpness <span id="sharpVal"></span>
+            <input type="range" id="sharp" min="0.5" max="20" step="0.1" value="5" oninput="onSigmoid()"></label>
+          <div class="heatctl-hint">Big events &rarr; empty &nbsp;|&nbsp; small events &rarr; full</div>
+        </div>
+      </div>
+      <div class="legend">
+        <div>GPS point density (low &rarr; high)</div>
+        <div class="grad"></div>
+        <div class="cap"><span>sparse</span><span>dense</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="cols">
+    <div class="card">
+      <h2>Travel distance by mode (km)</h2>
+      <div class="chartbox"><canvas id="modeChart"></canvas></div>
+      <div id="modeList" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h2 id="yearChartTitle">Distance by year</h2>
+      <div class="chartbox short"><canvas id="yearChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Monthly distance pattern <span id="patternScope" style="text-transform:none"></span></h2>
+      <div class="chartbox short"><canvas id="monthPattern"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Weekly rhythm · when visits start (local time)</h2>
+      <div id="rhythmWrap">
+        <div class="hourlabels" id="hourLabels"></div>
+        <div class="grid" id="rhythmGrid"></div>
+      </div>
+      <div class="legend-row" id="gloss"></div>
+    </div>
+    <div class="card">
+      <h2>Schedule forecast <span id="fcScope" style="text-transform:none"></span></h2>
+      <div class="fc-controls">
+        <label>Location
+          <select id="fcLoc" onchange="loadForecast()"></select>
+        </label>
+        <label>Day
+          <select id="fcDow" onchange="loadForecast()">
+            <option value="weekday">Typical weekday</option>
+            <option value="weekend">Typical weekend</option>
+            <option value="all" selected>All days</option>
+            <option disabled>Select</option>
+            <option value="0">Monday</option>
+            <option value="1">Tuesday</option>
+            <option value="2">Wednesday</option>
+            <option value="3">Thursday</option>
+            <option value="4">Friday</option>
+            <option value="5">Saturday</option>
+            <option value="6">Sunday</option>
+          </select>
+        </label>
+      </div>
+      <div id="fcSummary"></div>
+      <div id="fcNarrative"></div>
+      <div class="chartbox short" id="fcChartWrap"><canvas id="fcChart"></canvas></div>
+      <div id="fcPlaces"></div>
+    </div>
+    <div class="card">
+      <h2>Activity starts by hour of day</h2>
+      <div class="chartbox short"><canvas id="hourChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Most visited places <span id="placeScope" style="text-transform:none"></span></h2>
+      <div class="geocode">
+        <span id="geoTxt">addresses: resolving&hellip;</span>
+        <div class="bar"><div id="geoBar"></div></div>
+        <button id="geoStart" onclick="geoStart()" hidden>Start</button>
+        <button id="geoPause" onclick="geoPause()" hidden>Pause</button>
+      </div>
+      <div style="max-height:480px; overflow:auto">
+        <table class="places">
+          <thead><tr><th>Place</th><th class="num">Visits</th><th class="num">Time</th><th class="num">Last</th></tr></thead>
+          <tbody id="placeRows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+<footer>
+  Served by a local Flask backend that reads <code>Timeline.json</code> directly (all analysis stays on this machine).
+  Map tiles: standard OpenStreetMap tiles, darkened in CSS to match the theme
+  (data from OpenStreetMap contributors; their license asks for attribution,
+  which is on the map by default), with keyless
+  <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> vector styles available as
+  options in the map control.
+  The heatmap sigmoid lets you emphasise larger or smaller GPS clusters.
+  Place addresses are reverse-geocoded in the background against the free
+  <a href="https://operations.osmfoundation.org/policies/nominatim/" target="_blank">Nominatim</a>
+  service at ~1 request/second and cached locally.
+</footer>
+
+<script src="__LEAFLET_JS__"></script>
+<script src="__HEAT_JS__"></script>
+<script src="__CHART_JS__"></script>
+<script src="__MAPLIBRE_JS__"></script>
+<script src="__MLGL_LEAFLET_JS__"></script>
+<script>
+const $ = id => document.getElementById(id);
+const api = async (u) => (await fetch(u)).json();
+
+let SUM, HEAT, PLACES, MONTHLY;
+let YEAR = "all";
+let HOME_PT = null;
+let placeMarkers = [], freqMarkers = [];
+const charts = {};
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const nf = new Intl.NumberFormat("en-US");
+
+/* ---------- helpers ---------- */
+const fmtKm = k => nf.format(Math.round(k)) + " km";
+const fmtH = h => {
+  if (h === null || h === undefined || isNaN(h)) return "&middot;";
+  const days = Math.floor(h / 24), hrs = Math.round(h % 24);
+  if (days >= 365) return (days / 365).toFixed(1) + " y";
+  if (days >= 14) return days + " d";
+  return (days ? days + "d " : "") + hrs + "h";
+};
+const typeTag = t => {
+  let cls = "t-OTHER";
+  if (t === "HOME") cls = "t-HOME";
+  else if (t === "WORK") cls = "t-WORK";
+  else if (t === "UNKNOWN") cls = "t-UNKNOWN";
+  else if (String(t).startsWith("INFERRED")) cls = "t-INFERRED";
+  else if (t === "SEARCHED_ADDRESS") cls = "t-SEARCHED_ADDRESS";
+  else if (t === "ALIASED_LOCATION") cls = "t-ALIASED_LOCATION";
+  return `<span class="tag ${cls}">${String(t).replace(/_/g, " ")}</span>`;
+};
+const prettyMode = m => m.split("_").map(w => w[0] + w.slice(1).toLowerCase()).join(" ");
+const esc = s => String(s == null ? "" : s).replace(/</g, "&lt;");
+const yearVisits = p => YEAR === "all" ? p.visits : (p.byYear[YEAR] || 0);
+const yearDur = p => YEAR === "all" ? p.durationH : (p.yearDur[YEAR] || 0);
+
+function makeChart(id, cfg) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart($(id), cfg);
+}
+
+/* ---------- init ---------- */
+(async function init() {
+  try {
+    [SUM, HEAT, PLACES, MONTHLY] = await Promise.all([
+      api("/api/summary"), api("/api/heat"), api("/api/places"), api("/api/monthly"),
+    ]);
+  } catch (e) {
+    $("loading").innerHTML = "Could not load data from the Flask backend. Start it with: python3 app.py";
+    return;
+  }
+  buildHeader();
+  buildMap();
+  onSigmoid();
+  await refreshYearViews();
+  $("loading").style.display = "none";
+  initForecast();
+  pollGeocode();
+  geoKeepPolling();
+})();
+let geoInterval = null;
+function geoKeepPolling() { if (geoInterval) return; geoInterval = setInterval(pollGeocode, 6000); }
+function stopGeoPolling() { if (geoInterval) { clearInterval(geoInterval); geoInterval = null; } }
+
+function buildHeader() {
+  const s = SUM.summary;
+  const years = parseInt(s.endDate.slice(0, 4)) - parseInt(s.startDate.slice(0, 4)) + 1;
+  $("chips").innerHTML = [
+    ["tracked", years + " yrs"],
+    ["distance", fmtKm(s.totalDistanceKm)],
+    ["activities", nf.format(s.totalActivities)],
+    ["places", nf.format(s.uniquePlaces)],
+    ["segments", nf.format(s.segments)],
+  ].map(([l, v]) => `<div class="chip"><b>${v}</b><span>${l}</span></div>`).join("");
+  $("rng").textContent = s.startDate + " \u2192 " + s.endDate;
+  $("ptcnt").textContent = nf.format(Object.values(HEAT.byYear).reduce((a, b) => a + b.length, 0));
+  $("gen").textContent = "generated " + SUM.generated.replace("T", " ");
+  const sel = $("yearSel");
+  sel.innerHTML = "";
+  sel.add(new Option("All years", "all"));
+  SUM.years.forEach(y => sel.add(new Option(String(y), String(y))));
+  sel.addEventListener("change", () => { YEAR = sel.value; refreshYearViews(); });
+}
+
+/* ---------- basemap: keyless dark raster (OSM tiles, darkened) by default, plus OpenFreeMap vector styles ---------- */
+const BASEMAPS = {
+  "Dark (OSM)": null,
+  "OpenFreeMap Dark": "https://tiles.openfreemap.org/styles/dark",
+  "OpenFreeMap Liberty": "https://tiles.openfreemap.org/styles/liberty",
+  "OpenFreeMap Positron": "https://tiles.openfreemap.org/styles/positron",
+  "OpenFreeMap Fiord": "https://tiles.openfreemap.org/styles/fiord",
+};
+
+const map = L.map("map", { zoomControl: true });
+map.setView([48.05, 11.44], 4);
+
+function makeBasemap(styleUrl) {
+  if (!styleUrl) {
+    // raster layer: plain images, always renders (WebGL-free).
+    // OpenStreetMap standard tiles, darkened in-CSS to match the theme, keyless.
+    return L.tileLayer(
+      "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+      { maxZoom: 19, className: "darkosm", attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' });
+  }
+  return L.maplibreGL({ style: styleUrl, attributionControl: true })
+    .on("load", () => { if (map._initialized !== false) map.invalidateSize(); });
+}
+
+const baseLayers = {};
+for (const name in BASEMAPS) {
+  baseLayers[name] = makeBasemap(BASEMAPS[name]);
+}
+map.addLayer(baseLayers["Dark (OSM)"]);
+L.control.layers(baseLayers, {}, { position: "topleft", collapsed: false }).addTo(map);
+
+const heatLayer = L.heatLayer([], { radius: 16, blur: 18, maxZoom: 15, max: 1, minOpacity: 0.02, gradient: {
+  0.0: "#12326e", 0.2: "#1d74c7", 0.35: "#35b0a8", 0.5: "#59d98f",
+  0.65: "#fde047", 0.8: "#fb923c", 1.0: "#ef4444",
+}}).addTo(map);
+
+if (typeof ResizeObserver !== "undefined") {
+  const mapRO = new ResizeObserver(() => {
+    if (map._initialized !== false) map.invalidateSize();
+  });
+  mapRO.observe($("map"));
+}
+
+function buildMap() {
+  HOME_PT = (SUM.frequentPlaces.find(f => f.label === "HOME") || SUM.home || { lat: 48.0534, lon: 11.4449 });
+  map.setView([HOME_PT.lat, HOME_PT.lon], 12);
+  rebuildFreqMarkers();
+}
+
+function fitAll() {
+  const b = SUM.bounds;
+  map.fitBounds([[b.minLat, b.minLon], [b.maxLat, b.maxLon]], { padding: [18, 18] });
+}
+function goHome() { map.setView([HOME_PT.lat, HOME_PT.lon], 12); }
+
+function makePlaceIcon(type) {
+  const color = { HOME: "#4ade80", WORK: "#fb923c" }[type] || "#4da6ff";
+  return L.divIcon({ className: "",
+    html: `<svg width="13" height="13"><circle cx="6.5" cy="6.5" r="6" fill="${color}" stroke="#0b0f17" stroke-width="2"/></svg>`,
+    iconSize: [13, 13], iconAnchor: [6.5, 6.5] });
+}
+
+function rebuildFreqMarkers() {
+  freqMarkers.forEach(m => map.removeLayer(m));
+  freqMarkers = [];
+  SUM.frequentPlaces.forEach(f => {
+    const m = L.marker([f.lat, f.lon], { icon: makePlaceIcon(f.label), zIndexOffset: 500 })
+      .addTo(map)
+      .bindPopup(`<div style="min-width:200px; font-size:12.5px; color:#111">
+        <b>\u2605 ${esc(f.label || "frequent")}</b>
+        <div style="margin-top:4px; color:#444">${esc(f.name || "unknown place")}</div>
+        <button onclick="lookupAddr([${f.lat},${f.lon}])" style="margin-top:6px; background:#eef2f7;border:1px solid #cbd5e1;border-radius:6px;padding:3px 8px;font-size:11.5px;cursor:pointer">Look up exact address&hellip;</button>
+      </div>`);
+    freqMarkers.push(m);
+  });
+  applyFreqToggle();
+}
+function applyFreqToggle() {
+  const on = $("freqOn").checked;
+  freqMarkers.forEach(m => { if (on) m.addTo(map); else map.removeLayer(m); });
+}
+
+function rankedPlaces() {
+  return PLACES
+    .filter(p => yearVisits(p) > 0)
+    .sort((a, b) => yearVisits(b) - yearVisits(a) || yearDur(b) - yearDur(a));
+}
+function updateMarkers() {
+  placeMarkers.forEach(m => map.removeLayer(m));
+  placeMarkers = [];
+  const on = $("placesOn").checked;
+  rankedPlaces().slice(0, 40).forEach(p => {
+    const m = L.circleMarker([p.lat, p.lon], {
+      radius: 4 + Math.min(10, Math.log10(yearVisits(p)) * 5),
+      color: "#ffffff", weight: 1, fillColor: "#4da6ff", fillOpacity: 0.85,
+    });
+    m.bindPopup(popupHtml(p));
+    if (on) m.addTo(map);
+    placeMarkers.push(m);
+  });
+  const rows = $("placeRows");
+  rows.innerHTML = rankedPlaces().slice(0, 20).map((p, i) => `
+    <tr title="Focus map">
+      <td class="name">${typeTag(p.type)}<b>${esc(p.name || p.type || "?")}</b>
+        <span>${esc(p.address || "geocoding pending&hellip;")}</span></td>
+      <td class="num">${nf.format(yearVisits(p))}</td>
+      <td class="num">${fmtH(yearDur(p))}</td>
+      <td class="num">${p.lastSeen ? p.lastSeen.slice(0, 10) : "&middot;"}</td>
+    </tr>`).join("");
+  rows.querySelectorAll("tr").forEach((tr, i) => tr.addEventListener("click", () => {
+    const p = rankedPlaces()[i];
+    map.flyTo([p.lat, p.lon], Math.max(13, map.getZoom()));
+    placeMarkers[i].openPopup();
+  }));
+  $("placeScope").textContent = YEAR === "all" ? "(all time)" : `(${YEAR})`;
+}
+
+function popupHtml(p) {
+  return `<div style="min-width:210px; font-size:12.5px; color:#111">
+    <b>${esc(p.name || p.type || "place")}</b> ${typeTag(p.type)}
+    <div style="margin-top:4px; color:#444">${esc(p.address || "no address yet · geocoder is working")}</div>
+    <div style="margin-top:4px"><b>${nf.format(yearVisits(p))}</b> visits${YEAR === "all" ? "" : " in " + YEAR}
+      &middot; ${fmtH(yearDur(p))} spent</div>
+    <div style="color:#666; font-size:11.5px">${p.lastSeen ? "last seen " + p.lastSeen.slice(0, 10) : ""}</div>
+    <button onclick="lookupAddr([${p.lat},${p.lon}])" style="margin-top:6px; background:#eef2f7;border:1px solid #cbd5e1;border-radius:6px;padding:3px 8px;font-size:11.5px;cursor:pointer">Look up exact address&hellip;</button>
+  </div>`;
+}
+
+function applyToggles() {
+  if ($("heatOn").checked) heatLayer.addTo(map); else map.removeLayer(heatLayer);
+  updateMarkers();
+  applyFreqToggle();
+}
+
+/* on-demand reverse geocode, cached in localStorage */
+function lookupAddr(ll) {
+  const key = "revgeo:" + Math.round(ll[0] * 1000) + "," + Math.round(ll[1] * 1000);
+  const cached = localStorage.getItem(key);
+  const show = loc => map.openPopup(`<div style="font-size:12.5px; color:#111; max-width:260px">${esc(loc)}</div>`, L.latLng(ll));
+  if (cached) return show(cached);
+  fetch(`https://nominatim.openstreetmap.org/reverse?lat=${ll[0]}&lon=${ll[1]}&format=jsonv2`,
+        { headers: { "Accept": "application/json" } })
+    .then(r => r.json())
+    .then(d => { const t = d.display_name || "no address found"; localStorage.setItem(key, t); show(t); })
+    .catch(() => show("address lookup failed"));
+}
+
+/* ---------- year-driven views ---------- */
+async function refreshYearViews() {
+  const [modes, rhythm] = await Promise.all([
+    api("/api/modes?year=" + YEAR),
+    api("/api/rhythm?year=" + YEAR),
+  ]);
+  modeChart(modes);
+  rhythmChart(rhythm);
+  updateHeat();
+  updateMarkers();
+  monthBar();
+  patternChart();
+}
+
+function updateHeat() {
+  const pts = YEAR === "all" ? Object.values(HEAT.byYear).flat() : (HEAT.byYear[YEAR] || []);
+  const max = Math.max(1, ...pts.map(p => p[2] || 1));
+  const maxLn = Math.log(max);
+  const thr = +$("thr").value;
+  const k = +$("sharp").value;
+  heatLayer.setLatLngs(pts.map(p => {
+    const x = p[2] > 1 ? Math.log(p[2]) / maxLn : 0;
+    const i = 1 / (1 + Math.exp(-k * (x - thr)));
+    return [p[0], p[1], Math.min(1, Math.max(0, i))];
+  }));
+  if (!$("heatOn").checked) map.removeLayer(heatLayer);
+}
+
+let _sigFrame = 0;
+function onSigmoid() {
+  $("thrVal").textContent = (+$("thr").value).toFixed(2);
+  $("sharpVal").textContent = (+$("sharp").value).toFixed(1);
+  if (_sigFrame) cancelAnimationFrame(_sigFrame);
+  _sigFrame = requestAnimationFrame(() => updateHeat());
+}
+
+Chart.defaults.color = "#8b97a9";
+Chart.defaults.borderColor = "rgba(255,255,255,.06)";
+Chart.defaults.font.family = "Segoe UI, system-ui, sans-serif";
+const MODE_COLORS = ["#4da6ff", "#42d392", "#fde047", "#fb923c", "#ef4444", "#c084fc", "#22d3ee", "#f472b6"];
+
+function modeChart(modes) {
+  const byDist = modes.labels.map((l, i) =>
+    ({ l, d: modes.distanceKm[i], c: modes.count[i], h: modes.durationH[i] })).sort((a, b) => b.d - a.d);
+  const top = byDist.slice(0, 6), rest = byDist.slice(6);
+  const labels = top.map(x => prettyMode(x.l));
+  const data = top.map(x => x.d);
+  const otherD = rest.reduce((s, x) => s + x.d, 0);
+  if (otherD > 0) { labels.push(`Other (${rest.length})`); data.push(otherD); }
+  makeChart("modeChart", {
+    type: "doughnut",
+    data: { labels, datasets: [{ data, backgroundColor: MODE_COLORS.slice(0, labels.length),
+      hoverOffset: 6, borderColor: "#131a26", borderWidth: 2 }] },
+    options: { cutout: "60%", maintainAspectRatio: false,
+      plugins: { legend: { position: "right", labels: { boxWidth: 10, padding: 8 } } } },
+  });
+  const maxD = byDist[0].d;
+  $("modeList").innerHTML = byDist.map(x => `
+    <div style="display:flex; align-items:center; gap:8px; margin:3px 0">
+      <span style="width:96px; color:var(--muted); font-size:11px; text-transform:uppercase">${prettyMode(x.l)}</span>
+      <div style="flex:1; height:6px; background:var(--panel2); border-radius:3px; overflow:hidden">
+        <div style="width:${Math.max(2, x.d / maxD * 100)}%; height:100%; background:#4da6ff; border-radius:3px"></div>
+      </div>
+      <span style="width:76px; text-align:right; font-size:11.5px">${fmtKm(x.d)}</span>
+    </div>`).join("");
+}
+
+function barOpts() {
+  return {
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false },
+      tooltip: { callbacks: { label: c => nf.format(c.parsed.y) + " km" } } },
+    scales: {
+      x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 26 } },
+      y: { beginAtZero: true, grid: { color: "rgba(255,255,255,.05)" },
+        ticks: { callback: v => nf.format(v) + " km" } },
+    },
+  };
+}
+function monthBar() {
+  const title = $("yearChartTitle");
+  if (YEAR === "all") {
+    const agg = {};
+    MONTHLY.years.forEach((ym, i) => agg[ym.slice(0, 4)] = (agg[ym.slice(0, 4)] || 0) + MONTHLY.distanceKm[i]);
+    const ys = Object.keys(agg);
+    title.textContent = "Distance by year";
+    makeChart("yearChart", { type: "bar",
+      data: { labels: ys, datasets: [{ label: "km", data: ys.map(y => Math.round(agg[y])),
+        backgroundColor: "#4da6ff", borderRadius: 3, maxBarThickness: 26 }] }, options: barOpts() });
+  } else {
+    const vals = Array(12).fill(0);
+    MONTHLY.years.forEach((ym, i) => { if (ym.slice(0, 4) === YEAR) vals[+ym.slice(5, 7) - 1] = MONTHLY.distanceKm[i]; });
+    title.textContent = `Distance by month (${YEAR})`;
+    makeChart("yearChart", { type: "bar",
+      data: { labels: MONTH_NAMES, datasets: [{ label: "km", data: vals.map(Math.round),
+        backgroundColor: "#4da6ff", borderRadius: 3, maxBarThickness: 26 }] }, options: barOpts() });
+  }
+}
+function patternChart() {
+  const mon = Array(12).fill(0);
+  MONTHLY.years.forEach((ym, i) => {
+    if (YEAR === "all" || ym.slice(0, 4) === YEAR) mon[+ym.slice(5, 7) - 1] += MONTHLY.distanceKm[i];
+  });
+  $("patternScope").textContent = YEAR === "all" ? "(all years)" : `(${YEAR})`;
+  makeChart("monthPattern", { type: "line",
+    data: { labels: MONTH_NAMES, datasets: [{
+      label: "km", data: mon.map(Math.round), borderColor: "#42d392",
+      backgroundColor: "rgba(66,211,146,.12)", fill: true, tension: .35,
+      pointRadius: 2, pointBackgroundColor: "#42d392" }] },
+    options: { ...barOpts(), plugins: { legend: { display: false } } } });
+}
+
+function rhythmChart(R) {
+  const W = R.weekday, M = R.matrix;
+  const max = Math.max(1, ...M.flat());
+  $("hourLabels").innerHTML = Array.from({ length: 24 }, (_, h) => `<div>${h}</div>`).join("");
+  const cells = [];
+  for (let d = 0; d < 7; d++) {
+    const rowSum = M[d].reduce((a, b) => a + b, 0);
+    cells.push(`<div class="rowlabel"><b style="color:var(--text)">${W[d]}</b><span>${rowSum}</span></div>`);
+    for (let h = 0; h < 24; h++) {
+      const v = M[d][h], a = Math.pow(v / max, 0.6);
+      const color = v === 0 ? "#10171f" : `rgba(54,162,235,${0.18 + a * 0.82})`;
+      cells.push(`<div class="cel" style="background:${color}" title="${W[d]} ${String(h).padStart(2, "0")}:00 &middot; ${v} visits"></div>`);
+    }
+  }
+  $("rhythmGrid").innerHTML = cells.join("");
+  $("gloss").innerHTML = `<span class="sw" style="background:rgba(54,162,235,.2)"></span> sparse
+    <span class="sw" style="background:rgba(54,162,235,1)"></span> dense
+    &middot; peak ${nf.format(max)} visits/hour &middot; hover for detail`;
+  makeChart("hourChart", { type: "bar",
+    data: { labels: Array.from({ length: 24 }, (_, h) => h),
+      datasets: [{ label: "starts", data: R.hourActivity, backgroundColor: "#fb923c", borderRadius: 3, maxBarThickness: 18 }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { display: false } },
+      scales: { x: { grid: { display: false }, title: { display: true, text: "local hour" } },
+        y: { beginAtZero: true, grid: { color: "rgba(255,255,255,.05)" } } } } });
+}
+
+/* ---------- geocode progress ---------- */
+let lastDone = -1;
+function pollGeocode() {
+  api("/api/geocode").then(g => {
+    const pct = g.total ? Math.round(g.done / g.total * 100) : 0;
+    $("geoBar").style.width = pct + "%";
+    $("geoTxt").textContent = `addresses: ${nf.format(g.done)} / ${nf.format(g.total)} (${pct}%)`;
+    $("geoStart").hidden = g.running || g.done >= g.total;
+    $("geoPause").hidden = !g.running;
+    if (g.done >= g.total && g.total > 0) {
+      $("geoTxt").textContent = `addresses: ${nf.format(g.done)} / ${nf.format(g.total)} (done)`;
+      stopGeoPolling();
+    }
+    if (g.done !== lastDone) {
+      lastDone = g.done;
+      refreshPlacesFromCache();
+    }
+  }).catch(() => {});
+}
+async function refreshPlacesFromCache() {
+  PLACES = await api("/api/places");
+  updateMarkers();
+}
+function geoStart() { fetch("/api/geocode/start", { method: "POST" }); geoKeepPolling(); pollGeocode(); }
+function geoPause() { fetch("/api/geocode/pause", { method: "POST" }); pollGeocode(); }
+
+// ---------- Schedule forecast ----------
+let FC_ENT = { regions: [], places: [] };
+let FC_CHART = null;
+
+async function initForecast() {
+  try {
+    FC_ENT = await api("/api/forecast/entities");
+  } catch (e) { $("fcScope").textContent = " (unavailable)"; return; }
+  const sel = $("fcLoc");
+  const grpR = document.createElement("optgroup"); grpR.label = "Regions";
+  FC_ENT.regions.forEach(r => {
+    const o = document.createElement("option");
+    o.value = "region:" + r.id;
+    o.textContent = r.name;
+    grpR.appendChild(o);
+  });
+  const grpP = document.createElement("optgroup"); grpP.label = "Named places";
+  FC_ENT.places.forEach(p => {
+    const o = document.createElement("option");
+    o.value = "place:" + p.id;
+    o.textContent = p.name || p.type.replace(/_/g, " ").toLowerCase();
+    grpP.appendChild(o);
+  });
+  sel.appendChild(grpR); sel.appendChild(grpP);
+  if (FC_ENT.regions.length) {
+    const def = FC_ENT.regions.find(r => /utah|home/i.test(r.name)) || FC_ENT.regions[0];
+    sel.value = "region:" + def.id;
+  }
+  loadForecast();
+}
+
+async function loadForecast() {
+  const entity = $("fcLoc").value;
+  const dow = $("fcDow").value;
+  if (!entity) return;
+  try {
+    const f = await api("/api/forecast?entity=" + encodeURIComponent(entity) + "&dow=" + encodeURIComponent(dow));
+    renderForecast(f);
+  } catch (e) {
+    $("fcNarrative").innerHTML = '<div class="fctime">forecast failed</div>';
+  }
+}
+
+function renderForecast(f) {
+  const s = f.summary;
+  $("fcScope").innerHTML = f.entityName ? "&nbsp;&middot; " + f.entityName : "";
+
+  const act = s.activityTop.slice(0, 3);
+  $("fcSummary").innerHTML = [
+    '<div class="fchip">~' + s.distanceKm + ' km/day</div>',
+    '<div class="fchip">' + s.activityCount.toLocaleString() + " events</div>",
+    ...act.map(a => '<div class="fchip">' + hc(a.type) + ' ' + (a.prob * 100).toFixed(0) + '%</div>')
+  ].join("");
+
+  $("fcNarrative").innerHTML = f.narrative.map(n => {          // "HH:00 to HH:00 -> text"
+    const i = n.indexOf("→");
+    const t = n.slice(0, i).trim(), txt = n.slice(i + 1).trim();
+    return '<div><span class="fctime">' + t + "</span> &nbsp;" + txt + "</div>";
+  }).join("");
+
+  // hourly chart: most likely activity probability (top) as an area
+  const labels = f.hours.map(h => h.hour + ":00");
+  const series = f.hours.map(h => {
+    const top = h.topActivities[0];
+    return top ? top.prob : 0;
+  });
+  const colors = f.hours.map(h => {
+    const top = h.topActivities[0];
+    return "#B392F0"; // activity
+  });
+  if (FC_CHART) FC_CHART.destroy();
+  FC_CHART = new Chart($("fcChart"), {
+    type: "line",
+    data: { labels, datasets: [{
+      label: "activity likelihood", data: series, borderColor: "#B392F0",
+      backgroundColor: "rgba(179,146,240,.18)", fill: true, tension: .35, pointRadius: 0
+    }]},
+    options: {
+      scales: { y: { beginAtZero: true, max: 1, ticks: { callback: v => Math.round(v * 100) + "%" } },
+                x: { ticks: { maxTicksLimit: 12 } } },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  const pl = s.placesTop.slice(0, 6);
+  $("fcPlaces").innerHTML = "<h2 style='margin:6px 0 4px'>Top places that day</h2>" +
+    pl.map(p => '<div class="fp"><span>' + hc(p.place) + '</span><span>' + (p.prob * 100).toFixed(1) + "%</span></div>").join("");
+}
+
+function hc(s) { return String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+
+</script>
+</body>
+</html>
